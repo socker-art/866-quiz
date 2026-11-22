@@ -295,6 +295,7 @@
     else if (view.name === "wrong") app.innerHTML = renderWrong();
     else if (view.name === "import") app.innerHTML = renderImport();
     else if (view.name === "map") app.innerHTML = renderMap(view.params.cid);
+    else if (view.name === "maps") app.innerHTML = renderMaps();
     else if (view.name === "lesson") app.innerHTML = renderLesson();
     else if (view.name === "bag") app.innerHTML = renderBag();
     else app.innerHTML = renderHome();
@@ -309,6 +310,7 @@
     var log = todayLog();
     var target = Math.max(10, Math.min(g.due + Math.min(g.fresh, store.settings.dailyNew), 200));
     var ringP = Math.min(100, Math.round(log.n / target * 100));
+    var mt = mapTotals();
     var d = new Date();
     var subCards = allSubjects.map(function (s) {
       var ss = subjectStats(s);
@@ -337,6 +339,16 @@
       '</div>' +
       '<button class="btn primary block lg" data-go="start-today">开始今日学习</button>' +
       '</div>' +
+
+      '<button class="mapentry" data-go="maps">' +
+      '<span class="me-glow"></span>' +
+      '<span class="me-top"><span class="me-ico">🗺</span>' +
+      '<span class="me-tt"><span class="me-title">知识地图闯关</span>' +
+      '<span class="me-sub">' + mt.nodes + ' 个知识点 · 已闯 ' + mt.studied + ' · 三星 ' + mt.three + '</span></span>' +
+      '<span class="me-go">开始 ›</span></span>' +
+      '<span class="me-bar"><i style="width:' + (mt.maxstars ? Math.round(mt.stars / mt.maxstars * 100) : 0) + '%"></i></span>' +
+      '<span class="me-foot"><span>⭐ ' + mt.stars + ' / ' + mt.maxstars + ' 星</span><span>点知识点 → 讲解配图 → 小测 → 三星抽卡</span></span>' +
+      '</button>' +
 
       '<div class="section-title"><span class="h3">科目板块</span><span class="link" data-go="import">＋ 导入题库</span></div>' +
       '<div class="subjects">' + subCards + '</div>' +
@@ -1299,19 +1311,63 @@
     try {
       if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
       if (AC.state === "suspended") AC.resume();
-      var seq = {
-        tap: [[620, .05]],
-        right: [[880, .08], [1180, .12]],
-        wrong: [[240, .16]],
-        star: [[660, .08], [880, .08], [1180, .14]],
-        card: [[520, .06], [700, .06], [980, .06], [1340, .16]]
-      }[kind] || [[600, .05]];
-      var g = AC.createGain(); g.connect(AC.destination); g.gain.value = 0.06;
-      var t = AC.currentTime;
-      seq.forEach(function (n) {
-        var o = AC.createOscillator(); o.type = "sine"; o.frequency.value = n[0];
-        o.connect(g); o.start(t); o.stop(t + n[1]); t += n[1] + 0.02;
-      });
+      var t0 = AC.currentTime + 0.01;
+      function note(freq, dur, when, type, vol, glideTo) {
+        var o = AC.createOscillator(), g = AC.createGain();
+        o.type = type || "sine";
+        o.frequency.setValueAtTime(freq, t0 + when);
+        if (glideTo) o.frequency.exponentialRampToValueAtTime(glideTo, t0 + when + dur * .5);
+        g.gain.setValueAtTime(0.0001, t0 + when);
+        g.gain.exponentialRampToValueAtTime(vol || 0.09, t0 + when + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + when + dur);
+        o.connect(g); g.connect(AC.destination);
+        o.start(t0 + when); o.stop(t0 + when + dur + 0.02);
+      }
+      if (kind === "tap") { note(760, .06, 0, "triangle", .05, 900); }
+      else if (kind === "right") {
+        note(784, .10, 0, "triangle", .09);       // G5
+        note(1046, .16, .09, "triangle", .09);    // C6
+        note(1568, .12, .16, "sine", .045);       // 高亮泛音
+      } else if (kind === "wrong") {
+        note(196, .20, 0, "sawtooth", .055, 150);
+        note(147, .24, .14, "sine", .05);
+      } else if (kind === "star") {
+        note(659, .10, 0, "triangle", .085);
+        note(880, .10, .09, "triangle", .085);
+        note(1175, .18, .18, "triangle", .095);
+        note(1760, .14, .30, "sine", .05);
+      } else if (kind === "card") {
+        [523, 659, 784, 1046, 1319].forEach(function (f, i) { note(f, .12, i * .075, "triangle", .085); });
+        note(2093, .20, .40, "sine", .05);
+      }
+    } catch (e) {}
+  }
+
+  /* 多邻国式举报语音（短促夸奖） */
+  var SPOKEN = { key: "" };
+  function voice(kind) {
+    if (store.settings.sound === false) return;
+    try {
+      if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) return;
+      var pools = {
+        right: ["Nice!", "Great!", "Correct!", "Perfect!", "Yes!"],
+        wrong: ["Not quite.", "Almost.", "Try again."],
+        star: ["Three stars!", "Nailed it!", "Excellent!", "Awesome!"],
+        card: ["Wow, a new card!", "Lucky you!", "New card!"],
+        levelup: ["Level up!"]
+      };
+      var arr = pools[kind];
+      if (!arr) return;
+      var key = kind + Date.now();
+      SPOKEN.key = key;
+      var say = arr[Math.floor(Math.random() * arr.length)];
+      var u = new SpeechSynthesisUtterance(say);
+      u.lang = "en-US"; u.rate = 1.05; u.pitch = 1.15; u.volume = 0.9;
+      var vs = window.speechSynthesis.getVoices() || [];
+      var v = vs.filter(function (x) { return /en[-_]US/i.test(x.lang); })[0];
+      if (v) u.voice = v;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
     } catch (e) {}
   }
 
@@ -1342,6 +1398,60 @@
   function shortLabel(s) {
     var t = String(s || "").replace(/（.*?）/g, "").replace(/\(.*?\)/g, "").trim();
     return t.length > 7 ? t.slice(0, 7) + "…" : t;
+  }
+
+  function mapTotals() {
+    var out = { nodes: 0, studied: 0, stars: 0, maxstars: 0, three: 0 };
+    allSubjects.forEach(function (s) {
+      (s.chapters || []).forEach(function (ch) {
+        var mp = mapOf(ch.id);
+        if (!mp) return;
+        (mp.nodes || []).forEach(function (n) {
+          var st = nodeState(n.id);
+          out.nodes += 1; out.maxstars += 3;
+          if (st.stars > 0) out.studied += 1;
+          out.stars += st.stars || 0;
+          if (st.stars >= 3) out.three += 1;
+        });
+      });
+    });
+    return out;
+  }
+
+  function renderMaps() {
+    var tot = mapTotals();
+    var pct = tot.maxstars ? Math.round(tot.stars / tot.maxstars * 100) : 0;
+    var groups = allSubjects.map(function (s) {
+      var rows = (s.chapters || []).map(function (ch) {
+        var mp = mapOf(ch.id);
+        if (!mp) return "";
+        var nodes = mp.nodes || [], done = 0, starSum = 0;
+        nodes.forEach(function (n) {
+          var st = nodeState(n.id);
+          if (st.stars > 0) done += 1;
+          starSum += st.stars || 0;
+        });
+        var p = nodes.length ? Math.round(done / nodes.length * 100) : 0;
+        return '<button class="maps-row" data-map="' + esc(ch.id) + '">' +
+          '<span class="mr-no">' + (ch.no < 10 ? "0" + ch.no : ch.no) + '</span>' +
+          '<span class="mr-main"><span class="mr-name">' + esc(ch.title || ch.name) + '</span>' +
+          '<span class="mr-sub">' + nodes.length + ' 个知识点 · 结算 ' + starSum + ' / ' + (nodes.length * 3) + ' 星</span>' +
+          '<div class="bar"><i style="width:' + p + '%;background:linear-gradient(90deg,#ff9ec7,#ff4fa3)"></i></div></span>' +
+          '<span class="mr-pct">' + done + '/' + nodes.length + '</span></button>';
+      }).join("");
+      if (!rows) return "";
+      return '<div class="section-title"><span class="h3">' + esc(s.name) + ' · 知识地图</span></div><div class="maps-group">' + rows + '</div>';
+    }).join("");
+
+    return '<div class="wrap">' +
+      '<div class="subhead"><button class="back" data-go="home">‹</button><span class="h3">知识地图闯关</span></div>' +
+      '<div class="mh-card"><p class="mh-k">总进度</p>' +
+      '<div class="mh-big">' + tot.stars + '<span> / ' + tot.maxstars + ' 星</span></div>' +
+      '<p class="mh-note">已闯 ' + tot.studied + ' 个知识点 · 三星 ' + tot.three + ' 个 · 共 ' + tot.nodes + ' 个知识点</p>' +
+      '<div class="bar"><i style="width:' + pct + '%;background:linear-gradient(90deg,#ff9ec7,#ff4fa3)"></i></div>' +
+      '<p class="mh-tip">点进任意章节：看讲解配图 → 做 3 道小测 → 全对拿三星 → 抽卡进卡册。</p></div>' +
+      groups +
+      '</div>';
   }
 
   function renderMap(cid) {
@@ -1501,6 +1611,7 @@
     store.map[L.nd.id] = st;
     save();
     sfx("star");
+    voice(totalStars >= 3 ? "star" : "right");
     L.step = "done";
     render();
   }
@@ -1532,6 +1643,7 @@
     store.map[nodeId] = st;
     save();
     sfx("card");
+    voice("card");
     renderCardModal();
   }
 
@@ -1608,6 +1720,7 @@
       L.ok = key.length === 1 && key[0] === letter;
       if (L.ok) L.correct++;
       sfx(L.ok ? "right" : "wrong");
+      voice(L.ok ? "right" : "wrong");
       render(); return;
     }
     if ((t = ev.target.closest("[data-ltf]"))) {
@@ -1619,6 +1732,7 @@
       L.ok = c2.verdict === v;
       if (L.ok) L.correct++;
       sfx(L.ok ? "right" : "wrong");
+      voice(L.ok ? "right" : "wrong");
       render(); return;
     }
     if ((t = ev.target.closest("[data-lself]"))) {
@@ -1627,6 +1741,7 @@
       L.ok = t.getAttribute("data-lself") === "1";
       if (L.ok) L.correct++;
       sfx(L.ok ? "right" : "wrong");
+      voice(L.ok ? "right" : "wrong");
       render(); return;
     }
     if ((t = ev.target.closest("[data-lnext]"))) {

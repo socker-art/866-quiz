@@ -509,3 +509,48 @@ a { color: var(--brand); text-decoration: none; }
 .bagcard.rR{border-color:#a9c7ff;background:linear-gradient(160deg,#f0f6ff,#fff)}
 .bag-rar{position:absolute;top:8px;right:8px;font-size:9.5px;font-weight:800;color:var(--muted);letter-spacing:.1em}
 .bag-q{font-size:12.5px;line-height:1.5;color:var(--text);display:block;margin-top:6px}
+
+/* ===== 首页知识地图大入口 + 地图总览 ===== */
+.mapentry{position:relative;display:block;width:100%;text-align:left;border:0;cursor:pointer;
+ margin:18px 0 6px;padding:20px 20px 16px;border-radius:22px;overflow:hidden;color:#fff;
+ background:linear-gradient(135deg,#ff5fa8 0%,#ff3f8d 45%,#b447ff 100%);
+ box-shadow:0 16px 34px rgba(255,63,141,.30),inset 0 1px 0 rgba(255,255,255,.35);}
+.mapentry:active{transform:scale(.985)}
+.mapentry .me-glow{position:absolute;right:-40px;top:-60px;width:190px;height:190px;border-radius:50%;
+ background:radial-gradient(circle,rgba(255,255,255,.55),transparent 65%);pointer-events:none}
+.mapentry .me-top{position:relative;display:flex;align-items:center;gap:12px}
+.mapentry .me-ico{font-size:30px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.18))}
+.mapentry .me-tt{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0}
+.mapentry .me-title{font-size:21px;font-weight:800;letter-spacing:.4px}
+.mapentry .me-sub{font-size:12.5px;opacity:.92}
+.mapentry .me-go{font-size:13px;font-weight:700;padding:7px 13px;border-radius:999px;
+ background:rgba(255,255,255,.94);color:#e0327c;white-space:nowrap}
+.mapentry .me-bar{position:relative;display:block;height:9px;border-radius:9px;margin:14px 0 9px;
+ background:rgba(255,255,255,.28);overflow:hidden}
+.mapentry .me-bar i{display:block;height:100%;border-radius:9px;
+ background:linear-gradient(90deg,#fff,#ffe6f2);box-shadow:0 0 10px rgba(255,255,255,.8)}
+.mapentry .me-foot{position:relative;display:flex;justify-content:space-between;gap:10px;font-size:11.5px;opacity:.95}
+
+.mh-card{border-radius:20px;padding:18px;margin:12px 0 4px;color:#fff;
+ background:linear-gradient(135deg,#ff7ab0,#ff4fa3 55%,#c44dff);
+ box-shadow:0 14px 30px rgba(255,79,163,.24)}
+.mh-card .mh-k{margin:0 0 4px;font-size:12px;opacity:.9}
+.mh-card .mh-big{font-size:34px;font-weight:800;line-height:1.1}
+.mh-card .mh-big span{font-size:14px;font-weight:600;opacity:.92}
+.mh-card .mh-note{margin:6px 0 10px;font-size:12.5px;opacity:.92}
+.mh-card .bar{height:9px;border-radius:9px;background:rgba(255,255,255,.28);margin-bottom:10px}
+.mh-card .mh-tip{margin:0;font-size:12px;opacity:.9;line-height:1.55}
+
+.maps-group{border-radius:18px;overflow:hidden;background:#fff;border:1px solid var(--line,#e9edf5)}
+.maps-row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;
+ background:none;cursor:pointer;padding:13px 14px;border-bottom:1px solid var(--line,#f1f4fa)}
+.maps-row:last-child{border-bottom:0}
+.maps-row:active{background:#fff5fa}
+.mr-no{width:34px;height:34px;flex:0 0 34px;border-radius:11px;display:grid;place-items:center;
+ font-size:13px;font-weight:800;color:#e0327c;background:#ffe8f2}
+.mr-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.mr-name{font-size:14.5px;font-weight:700;color:var(--ink,#1d2433);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mr-sub{font-size:11.5px;color:var(--sub,#7a8499)}
+.mr-main .bar{height:6px;border-radius:6px;background:#f1f4fa}
+.mr-main .bar i{display:block;height:100%;border-radius:6px}
+.mr-pct{font-size:12.5px;font-weight:700;color:#e0327c;white-space:nowrap}
