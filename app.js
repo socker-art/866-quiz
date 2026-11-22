@@ -474,8 +474,9 @@
       (c.stars >= 4 ? '<span class="pill warn">' + stars(c.stars) + '</span>' : '') +
       '</div>' +
       '<div class="q-stem">' + formatStem(c.q) + '</div>' +
+      padHtml() +
       (["term", "short", "calc", "essay", "fill", "point"].indexOf(c.type) >= 0 && !S.revealed && !S.answered
-        ? '<p class="q-hint">先在纸上写出要点，再对照参考答案自评</p>' : "") +
+        ? '<p class="q-hint">在手写板上写出要点，再对照参考答案自评</p>' : "") +
       answerArea(c) +
       (c.type === "tf" && !S.answered ? '<p class="q-hint">判断对错，点一下即判分</p>' : "") +
       (c.type === "mcq" && !(S.answered || S.revealed) ? (
@@ -492,6 +493,134 @@
     var t = esc(q);
     t = t.replace(/＿{2,}/g, '<span class="blank"></span>');
     return t;
+  }
+
+  /* ============ 手写答题板 ============ */
+  var PAD = { color: "#111827", width: 2.2 };
+  var PAD_COLORS = ["#111827", "#1D4ED8", "#DC2626"];
+  var PAD_WIDTHS = [[1.6, "细"], [2.8, "中"], [5, "粗"]];
+
+  function padCardId() { var e = cur(); return e ? e.card.id : ""; }
+
+  function padHtml() {
+    if (store.settings.pad === false) return "";
+    var open = S.padOpen !== false;
+    return '<div class="pad' + (open ? "" : " off") + (S.padFull ? " full" : "") + '" id="pad">' +
+      '<div class="pad-bar">' +
+      '<span class="pad-title"><i class="pad-ico">✎</i>手写答题区</span>' +
+      '<div class="pad-tools">' +
+      PAD_COLORS.map(function (c) {
+        return '<button class="pad-dot' + (PAD.color === c ? " on" : "") + '" data-padcolor="' + c + '" style="--c:' + c + '" aria-label="笔色"></button>';
+      }).join("") +
+      PAD_WIDTHS.map(function (w) {
+        return '<button class="pad-btn' + (PAD.width === w[0] ? " on" : "") + '" data-padw="' + w[0] + '">' + w[1] + '</button>';
+      }).join("") +
+      '<button class="pad-btn" data-padundo="1">撤销</button>' +
+      '<button class="pad-btn" data-padclear="1">清空</button>' +
+      '<button class="pad-btn" data-padfull="1">' + (S.padFull ? "退出全屏" : "全屏") + '</button>' +
+      '<button class="pad-btn" data-padtoggle="1">' + (open ? "收起" : "展开") + '</button>' +
+      '</div></div>' +
+      '<div class="pad-body"><canvas id="padCanvas"></canvas></div></div>';
+  }
+
+  function mountPad() {
+    var cv = document.getElementById("padCanvas");
+    if (!cv || !S) return;
+    var cid = padCardId();
+    if (!S.pad) S.pad = {};
+    var strokes = S.pad[cid] || (S.pad[cid] = []);
+    var dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    var drawingId = null, act = null;
+
+    function ctxA() {
+      var x = cv.getContext("2d");
+      x.lineCap = "round"; x.lineJoin = "round";
+      return x;
+    }
+    function paint(s) {
+      var x = ctxA();
+      x.strokeStyle = s.color; x.lineWidth = s.w;
+      if (s.pts.length < 2) {
+        var p = s.pts[0];
+        if (p) { x.fillStyle = s.color; x.beginPath(); x.arc(p[0], p[1], s.w / 2, 0, 6.2832); x.fill(); }
+        return;
+      }
+      x.beginPath(); x.moveTo(s.pts[0][0], s.pts[0][1]);
+      for (var i = 1; i < s.pts.length; i++) x.lineTo(s.pts[i][0], s.pts[i][1]);
+      x.stroke();
+    }
+    function clearAll() {
+      var x = cv.getContext("2d");
+      x.setTransform(1, 0, 0, 1, 0, 0);
+      x.clearRect(0, 0, cv.width, cv.height);
+      x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    function redraw() { clearAll(); ctxA(); strokes.forEach(paint); }
+    function fit() {
+      var r = cv.getBoundingClientRect();
+      var w = r.width, h = r.height;
+      if (w < 2 || h < 2) {
+        var p = cv.parentNode;
+        w = p ? p.clientWidth : 0;
+        h = p ? p.clientHeight : 0;
+      }
+      if (w < 2 || h < 2) return;
+      dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+      cv.width = Math.max(1, Math.round(w * dpr));
+      cv.height = Math.max(1, Math.round(h * dpr));
+      redraw();
+    }
+    function pos(ev) {
+      var r = cv.getBoundingClientRect();
+      return [ev.clientX - r.left, ev.clientY - r.top];
+    }
+
+    cv.addEventListener("pointerdown", function (ev) {
+      if (ev.pointerType === "mouse" && ev.button !== 0) return;
+      if (drawingId !== null) return;
+      if (cv.width < 2) fit();
+      else {
+        var r0 = cv.getBoundingClientRect();
+        if (Math.abs(cv.width - Math.round(r0.width * dpr)) > 2 ||
+            Math.abs(cv.height - Math.round(r0.height * dpr)) > 2) fit();
+      }
+      ev.preventDefault();
+      try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
+      drawingId = ev.pointerId;
+      act = { color: PAD.color, w: PAD.width, pts: [pos(ev)] };
+      strokes.push(act);
+      paint(act);
+    });
+    cv.addEventListener("pointermove", function (ev) {
+      if (drawingId !== ev.pointerId || !act) return;
+      ev.preventDefault();
+      var pts = (ev.getCoalescedEvents && ev.getCoalescedEvents()) || [];
+      if (!pts.length) pts = [ev];
+      var x = ctxA();
+      x.strokeStyle = act.color; x.lineWidth = act.w;
+      pts.forEach(function (e2) {
+        var p = pos(e2);
+        var q = act.pts[act.pts.length - 1];
+        if (Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) < 1.2) return;
+        x.beginPath(); x.moveTo(q[0], q[1]); x.lineTo(p[0], p[1]); x.stroke();
+        act.pts.push(p);
+      });
+    });
+    function end(ev) {
+      if (drawingId !== ev.pointerId) return;
+      drawingId = null; act = null;
+    }
+    cv.addEventListener("pointerup", end);
+    cv.addEventListener("pointercancel", end);
+    cv.addEventListener("touchstart", function (ev) { ev.preventDefault(); }, { passive: false });
+
+    S.padCtl = { strokes: strokes, redraw: redraw, fit: fit };
+    fit();
+    if (window.ResizeObserver) {
+      if (S.padRO) S.padRO.disconnect();
+      S.padRO = new ResizeObserver(function () { fit(); });
+      S.padRO.observe(cv.parentNode);
+    }
   }
 
   function answerArea(c) {
@@ -550,7 +679,53 @@
     return '<button class="btn primary block lg" data-reveal="1">显示答案</button>';
   }
 
+  function bindPad() {
+    var padEl = document.getElementById("pad");
+    if (!padEl) return;
+    padEl.addEventListener("click", function (ev) {
+      var t = ev.target.closest("[data-padcolor],[data-padw],[data-padundo],[data-padclear],[data-padfull],[data-padtoggle]");
+      if (!t) return;
+      ev.preventDefault();
+      if (t.hasAttribute("data-padcolor")) {
+        PAD.color = t.getAttribute("data-padcolor");
+        padEl.querySelectorAll("[data-padcolor]").forEach(function (b) {
+          b.classList.toggle("on", b.getAttribute("data-padcolor") === PAD.color);
+        });
+        return;
+      }
+      if (t.hasAttribute("data-padw")) {
+        PAD.width = parseFloat(t.getAttribute("data-padw"));
+        padEl.querySelectorAll("[data-padw]").forEach(function (b) {
+          b.classList.toggle("on", parseFloat(b.getAttribute("data-padw")) === PAD.width);
+        });
+        return;
+      }
+      if (t.hasAttribute("data-padundo")) {
+        if (S.padCtl && S.padCtl.strokes.length) { S.padCtl.strokes.pop(); S.padCtl.redraw(); }
+        return;
+      }
+      if (t.hasAttribute("data-padclear")) {
+        if (S.padCtl && S.padCtl.strokes.length && confirm("清空这一题的笔迹？")) {
+          S.padCtl.strokes.length = 0; S.padCtl.redraw();
+        }
+        return;
+      }
+      if (t.hasAttribute("data-padtoggle")) {
+        S.padOpen = (S.padOpen === false);
+        render();
+        return;
+      }
+      if (t.hasAttribute("data-padfull")) {
+        S.padFull = !S.padFull;
+        render();
+        return;
+      }
+    });
+    mountPad();
+  }
+
   function bindSession() {
+    bindPad();
     var card = document.getElementById("qcard");
     if (!card) return;
     card.addEventListener("click", function (ev) {
@@ -774,6 +949,8 @@
         var label = t === "auto" ? "自动" : t === "light" ? "浅色" : "深色";
         return '<button data-theme="' + t + '" class="' + (s.theme === t ? "on" : "") + '">' + label + '</button>';
       }).join("") + '</div></div>' +
+      '<div class="li"><div class="l-main"><b>手写答题板</b><span>每题下方显示画板，手指或 Apple Pencil 都能写</span></div>' +
+      '<button class="btn sm" data-act="pad">' + (s.pad === false ? "已关闭" : "已开启") + '</button></div>' +
       '</div>' +
 
       '<div class="section-title"><span class="h3">数据</span></div>' +
@@ -942,6 +1119,10 @@
       el.addEventListener("click", function () {
         var act = el.getAttribute("data-act");
         if (act === "export") exportData();
+        if (act === "pad") {
+          store.settings.pad = !(store.settings.pad !== false);
+          save(); toast(store.settings.pad === false ? "已关闭手写板" : "已开启手写板"); render();
+        }
         if (act === "reset") {
           if (confirm("确定清空所有学习进度？题库会保留。")) { store.cards = {}; store.days = {}; save(); toast("已清空进度"); render(); }
         }
@@ -1052,6 +1233,15 @@
   /* ============ 启动 ============ */
   applyTheme();
   render();
+
+  // 横竖屏切换 / 窗口变化时重排手写板画布
+  var resizeTimer = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      if (S && S.padCtl && document.getElementById("padCanvas")) S.padCtl.fit();
+    }, 120);
+  });
 
   if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
     navigator.serviceWorker.register("sw.js").catch(function () {});

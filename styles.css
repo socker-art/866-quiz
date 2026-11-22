@@ -431,3 +431,19 @@ a { color: var(--brand); text-decoration: none; }
   .hero-title { font-size: 30px; }
   .quick { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ============ 手写答题板 ============ */
+.pad{margin:12px 0 14px;border:1px solid var(--line);border-radius:var(--radius-sm);background:var(--surface);overflow:hidden;box-shadow:var(--shadow-sm)}
+.pad-bar{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--bg-soft);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.pad-title{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:650;color:var(--muted);white-space:nowrap}
+.pad-ico{font-style:normal;color:var(--brand);font-size:14px}
+.pad-tools{margin-left:auto;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pad-dot{width:22px;height:22px;border-radius:50%;background:var(--c);border:2px solid transparent;box-shadow:inset 0 0 0 1px var(--line-strong);transition:transform .12s}
+.pad-dot.on{border-color:var(--text);transform:scale(1.1)}
+.pad-btn{font:inherit;font-size:13px;font-weight:600;padding:5px 10px;border-radius:9px;border:1px solid var(--line-strong);background:var(--surface);color:var(--text-2);transition:background .12s,color .12s}
+.pad-btn.on{background:var(--brand-soft);border-color:var(--brand);color:var(--brand)}
+.pad-body{position:relative;height:clamp(190px,30vh,300px);background-color:#fff;background-image:repeating-linear-gradient(to bottom,transparent 0 31px,rgba(90,105,130,.13) 31px 32px);border-radius:0}
+.pad-body canvas{display:block;width:100%;height:100%;touch-action:none;-webkit-user-select:none;user-select:none;cursor:crosshair}
+.pad.off .pad-body{display:none}
+.pad.full{position:fixed;inset:0;z-index:80;margin:0;border:none;border-radius:0;display:flex;flex-direction:column;background:var(--surface);padding-top:var(--safe-t);padding-bottom:var(--safe-b)}
+.pad.full .pad-body{flex:1;height:auto}
