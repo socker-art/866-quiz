@@ -554,3 +554,12 @@ a { color: var(--brand); text-decoration: none; }
 .mr-main .bar{height:6px;border-radius:6px;background:#f1f4fa}
 .mr-main .bar i{display:block;height:100%;border-radius:6px}
 .mr-pct{font-size:12.5px;font-weight:700;color:#e0327c;white-space:nowrap}
+
+/* ===== 知识闯关：文字要点 / 资料原文 ===== */
+.lnotes{margin-top:14px;border-top:1px dashed var(--line,#e9edf5);padding-top:12px}
+.lnote{margin:0 0 14px}
+.lnote h4{margin:0 0 6px;font-size:14px;font-weight:800;color:#e0327c;letter-spacing:.2px;line-height:1.4}
+.lnote .lp{margin:0 0 8px;font-size:14px;line-height:1.8;color:var(--ink,#1d2433);text-align:justify}
+.lnote .ltr{font-size:11.5px;line-height:1.65;color:#5b6577;background:#f6f8fc;border-radius:8px;
+ padding:6px 8px;margin:0 0 6px;overflow-x:auto;white-space:pre;font-family:ui-monospace,Menlo,monospace}
+.lfig figcaption{font-size:11px;color:var(--sub,#7a8499);margin-top:6px;text-align:center}

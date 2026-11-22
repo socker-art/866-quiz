@@ -277,6 +277,7 @@
   /* ============ 路由 ============ */
   var view = { name: "home" };
   var S = null; // session
+  var LPAD = { pad: {}, padOpen: true, padFull: false, padCtl: null }; // 知识闯关里的独立画板状态
 
   function go(name, params) {
     view = { name: name, params: params || {} };
@@ -301,6 +302,7 @@
     else app.innerHTML = renderHome();
     bindCommon();
     if (view.name === "session") bindSession();
+    if (view.name === "lesson") bindPad();
   }
 
   /* ============ 首页 ============ */
@@ -521,12 +523,17 @@
   var PAD_WIDTHS = [[1.6, "细"], [2.8, "中"], [5, "粗"]];
   var PAD_ERASERS = [[14, "小"], [24, "中"], [36, "大"]];
 
-  function padCardId() { var e = cur(); return e ? e.card.id : ""; }
+  function padCardId() {
+    if (S) { var e = cur(); return e ? e.card.id : ""; }
+    if (L) return "L:" + L.nd.id + ":" + L.i + ":" + L.step;
+    return "pad";
+  }
 
   function padHtml() {
     if (store.settings.pad === false) return "";
-    var open = S.padOpen !== false;
-    return '<div class="pad' + (open ? "" : " off") + (S.padFull ? " full" : "") + '" id="pad">' +
+    var H = S || LPAD;
+    var open = H.padOpen !== false;
+    return '<div class="pad' + (open ? "" : " off") + (H.padFull ? " full" : "") + '" id="pad">' +
       '<div class="pad-bar">' +
       '<span class="pad-title"><i class="pad-ico">✎</i>手写答题区</span>' +
       '<div class="pad-tools">' +
@@ -541,7 +548,7 @@
       }).join("") +
       '<button class="pad-btn" data-padundo="1">撤销</button>' +
       '<button class="pad-btn" data-padclear="1">清空</button>' +
-      '<button class="pad-btn" data-padfull="1">' + (S.padFull ? "退出全屏" : "全屏") + '</button>' +
+      '<button class="pad-btn" data-padfull="1">' + (H.padFull ? "退出全屏" : "全屏") + '</button>' +
       '<button class="pad-btn" data-padtoggle="1">' + (open ? "收起" : "展开") + '</button>' +
       '</div></div>' +
       '<div class="pad-body"><canvas id="padCanvas"></canvas></div></div>';
@@ -549,10 +556,11 @@
 
   function mountPad() {
     var cv = document.getElementById("padCanvas");
-    if (!cv || !S) return;
+    if (!cv) return;
+    var H = S || LPAD;
     var cid = padCardId();
-    if (!S.pad) S.pad = {};
-    var strokes = S.pad[cid] || (S.pad[cid] = []);
+    if (!H.pad) H.pad = {};
+    var strokes = H.pad[cid] || (H.pad[cid] = []);
     var dpr = Math.min(window.devicePixelRatio || 1, 2.5);
     var drawingId = null, act = null;
 
@@ -661,12 +669,12 @@
     cv.addEventListener("pointercancel", end);
     cv.addEventListener("touchstart", function (ev) { ev.preventDefault(); }, { passive: false });
 
-    S.padCtl = { strokes: strokes, redraw: redraw, fit: fit };
+    H.padCtl = { strokes: strokes, redraw: redraw, fit: fit };
     fit();
     if (window.ResizeObserver) {
-      if (S.padRO) S.padRO.disconnect();
-      S.padRO = new ResizeObserver(function () { fit(); });
-      S.padRO.observe(cv.parentNode);
+      if (H.padRO) H.padRO.disconnect();
+      H.padRO = new ResizeObserver(function () { fit(); });
+      H.padRO.observe(cv.parentNode);
     }
   }
 
@@ -729,6 +737,7 @@
   function bindPad() {
     var padEl = document.getElementById("pad");
     if (!padEl) return;
+    var H = S || LPAD;
     padEl.addEventListener("click", function (ev) {
       var t = ev.target.closest("[data-padcolor],[data-padw],[data-padmode],[data-padundo],[data-padclear],[data-padfull],[data-padtoggle]");
       if (!t) return;
@@ -755,22 +764,22 @@
         return;
       }
       if (t.hasAttribute("data-padundo")) {
-        if (S.padCtl && S.padCtl.strokes.length) { S.padCtl.strokes.pop(); S.padCtl.redraw(); }
+        if (H.padCtl && H.padCtl.strokes.length) { H.padCtl.strokes.pop(); H.padCtl.redraw(); }
         return;
       }
       if (t.hasAttribute("data-padclear")) {
-        if (S.padCtl && S.padCtl.strokes.length && confirm("清空这一题的笔迹？")) {
-          S.padCtl.strokes.length = 0; S.padCtl.redraw();
+        if (H.padCtl && H.padCtl.strokes.length && confirm("清空这一题的笔迹？")) {
+          H.padCtl.strokes.length = 0; H.padCtl.redraw();
         }
         return;
       }
       if (t.hasAttribute("data-padtoggle")) {
-        S.padOpen = (S.padOpen === false);
+        H.padOpen = (H.padOpen === false);
         render();
         return;
       }
       if (t.hasAttribute("data-padfull")) {
-        S.padFull = !S.padFull;
+        H.padFull = !H.padFull;
         render();
         return;
       }
@@ -1517,6 +1526,21 @@
     go("lesson");
   }
 
+  function noteHtml(nd) {
+    var notes = nd.notes || [];
+    if (!notes.length) return "";
+    return '<div class="lnotes"><div class="lesson-lab">知识要点 · 资料原文</div>' +
+      notes.map(function (n) {
+        var body = String(n.t || "").split(/\n+/).map(function (ln) {
+          ln = ln.trim();
+          if (!ln) return "";
+          if (ln.indexOf("｜") >= 0) return '<div class="ltr">' + esc(ln) + '</div>';
+          return '<p class="lp">' + esc(ln) + '</p>';
+        }).join("");
+        return '<div class="lnote"><h4>' + esc(n.h || "") + '</h4>' + body + '</div>';
+      }).join("") + '</div>';
+  }
+
   function renderLesson() {
     if (!L) return renderHome();
     var nd = L.nd;
@@ -1529,10 +1553,14 @@
       return head +
         '<div class="card lesson"><div class="lesson-lab">一句话要点</div>' +
         '<p class="lesson-text">' + esc(nd.point || "（这一条暂无要点文字，先按教材小节过一遍）") + '</p>' +
-        (nd.imgs && nd.imgs.length
-          ? nd.imgs.map(function (s) { return '<figure class="lfig"><img loading="lazy" src="' + esc(s) + '" alt=""><figcaption>教材／课件原图</figcaption></figure>'; }).join("")
-          : '<p class="sub" style="margin-top:8px">本条暂无配图，按要点理解即可。</p>') +
+        noteHtml(nd) +
         '</div>' +
+        (nd.imgs && nd.imgs.length
+          ? '<div class="card lesson"><div class="lesson-lab">教材／课件原图 · ' + nd.imgs.length + ' 张</div>' +
+            nd.imgs.map(function (s, k) {
+              return '<figure class="lfig"><img loading="lazy" src="' + esc(s) + '" alt=""><figcaption>图 ' + (k + 1) + ' · 教材或课件截图</figcaption></figure>';
+            }).join("") + '</div>'
+          : '<p class="sub" style="margin:8px 2px">本条暂无配图，按上面的文字要点理解即可。</p>') +
         (L.quiz.length ? '<button class="btn primary block lg" data-lstart="1">开始小测 · ' + L.quiz.length + ' 题</button>'
           : '<button class="btn primary block lg" data-lfinish="1">完成这一节</button>') +
         '</div>';
@@ -1575,6 +1603,7 @@
         '<div class="q-stem">' + formatStem(c.q) + '</div>' + answerZone +
         (c.type === "mcq" && L.answered ? '<div class="feedback ' + (L.ok ? "good" : "bad") + '"><div class="fb-lab">答案与解析</div><div class="fb-body">' + esc(c.a) + '</div></div>' : "") +
         '</div>' +
+        padHtml() +
         (L.answered ? '<button class="btn primary block lg" data-lnext="1">下一题</button>' : "") +
         '</div>';
     }
@@ -1687,7 +1716,8 @@
   window.addEventListener("resize", function () {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function () {
-      if (S && S.padCtl && document.getElementById("padCanvas")) S.padCtl.fit();
+      var HH = S || LPAD;
+      if (HH && HH.padCtl && document.getElementById("padCanvas")) HH.padCtl.fit();
     }, 120);
   });
 
