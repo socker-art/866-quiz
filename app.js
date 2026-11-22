@@ -36,6 +36,8 @@
       base.settings = Object.assign(base.settings, p.settings || {});
       base.custom = p.custom || [];
       base.created = p.created || base.created;
+      base.map = p.map || {};
+      base.bag = p.bag || [];
     } catch (e) {}
     return base;
   }
@@ -292,6 +294,9 @@
     else if (view.name === "settings") app.innerHTML = renderSettings();
     else if (view.name === "wrong") app.innerHTML = renderWrong();
     else if (view.name === "import") app.innerHTML = renderImport();
+    else if (view.name === "map") app.innerHTML = renderMap(view.params.cid);
+    else if (view.name === "lesson") app.innerHTML = renderLesson();
+    else if (view.name === "bag") app.innerHTML = renderBag();
     else app.innerHTML = renderHome();
     bindCommon();
     if (view.name === "session") bindSession();
@@ -341,6 +346,7 @@
       '<button data-go="mixed"><span class="ico">🎲</span>随机 30 题</button>' +
       '<button data-go="mock"><span class="ico">🧾</span>模拟卷</button>' +
       '<button data-go="wrong"><span class="ico">📕</span>错题本<span class="num">' + g.bad + '</span></button>' +
+      '<button data-go="bag"><span class="ico">🗂</span>卡册<span class="num">' + ((store.bag || []).length) + '</span></button>' +
       '<button data-go="stats"><span class="ico">📊</span>数据</button>' +
       '</div>' +
 
@@ -412,6 +418,7 @@
 
       '<div class="section-title"><span class="h3">开始练习</span></div>' +
       '<div class="card" style="display:grid;gap:10px;padding:16px">' +
+      (mapOf(ch.id) ? '<button class="btn block lg mapbtn" data-map="' + esc(ch.id) + '">🗺 知识地图闯关 · ' + mapOf(ch.id).nodes.length + ' 个知识点</button>' : '') +
       '<button class="btn primary block" data-session="chapter" data-sid="' + esc(sid) + '" data-cid="' + esc(ch.id) + '">全章顺序刷 · ' + ch.cards.length + ' 题</button>' +
       '<button class="btn block" data-session="quick" data-sid="' + esc(sid) + '" data-cid="' + esc(ch.id) + '">速刷 10 题</button>' +
       '<div class="row" style="gap:10px">' +
@@ -474,6 +481,7 @@
       (c.stars >= 4 ? '<span class="pill warn">' + stars(c.stars) + '</span>' : '') +
       '</div>' +
       '<div class="q-stem">' + formatStem(c.q) + '</div>' +
+      (c.from ? '<p class="q-src">来源：' + esc(c.from) + '</p>' : "") +
       padHtml() +
       (["term", "short", "calc", "essay", "fill", "point"].indexOf(c.type) >= 0 && !S.revealed && !S.answered
         ? '<p class="q-hint">在手写板上写出要点，再对照参考答案自评</p>' : "") +
@@ -496,9 +504,10 @@
   }
 
   /* ============ 手写答题板 ============ */
-  var PAD = { color: "#111827", width: 2.2 };
+  var PAD = { color: "#111827", width: 2.2, mode: "pen", eraserW: 22 };
   var PAD_COLORS = ["#111827", "#1D4ED8", "#DC2626"];
   var PAD_WIDTHS = [[1.6, "细"], [2.8, "中"], [5, "粗"]];
+  var PAD_ERASERS = [[14, "小"], [24, "中"], [36, "大"]];
 
   function padCardId() { var e = cur(); return e ? e.card.id : ""; }
 
@@ -509,11 +518,14 @@
       '<div class="pad-bar">' +
       '<span class="pad-title"><i class="pad-ico">✎</i>手写答题区</span>' +
       '<div class="pad-tools">' +
-      PAD_COLORS.map(function (c) {
+      '<button class="pad-btn' + (PAD.mode === "pen" ? " on" : "") + '" data-padmode="pen">笔</button>' +
+      '<button class="pad-btn' + (PAD.mode === "eraser" ? " on" : "") + '" data-padmode="eraser">像素橡皮</button>' +
+      (PAD.mode === "eraser" ? "" : PAD_COLORS.map(function (c) {
         return '<button class="pad-dot' + (PAD.color === c ? " on" : "") + '" data-padcolor="' + c + '" style="--c:' + c + '" aria-label="笔色"></button>';
-      }).join("") +
-      PAD_WIDTHS.map(function (w) {
-        return '<button class="pad-btn' + (PAD.width === w[0] ? " on" : "") + '" data-padw="' + w[0] + '">' + w[1] + '</button>';
+      }).join("")) +
+      (PAD.mode === "eraser" ? PAD_ERASERS : PAD_WIDTHS).map(function (w) {
+        var active = PAD.mode === "eraser" ? PAD.eraserW === w[0] : PAD.width === w[0];
+        return '<button class="pad-btn' + (active ? " on" : "") + '" data-padw="' + w[0] + '">' + w[1] + '</button>';
       }).join("") +
       '<button class="pad-btn" data-padundo="1">撤销</button>' +
       '<button class="pad-btn" data-padclear="1">清空</button>' +
@@ -539,15 +551,25 @@
     }
     function paint(s) {
       var x = ctxA();
-      x.strokeStyle = s.color; x.lineWidth = s.w;
+      if (s.mode === "eraser") {
+        x.globalCompositeOperation = "destination-out";
+        x.strokeStyle = "rgba(0,0,0,1)"; x.fillStyle = "rgba(0,0,0,1)";
+        x.lineCap = "butt";
+      } else {
+        x.globalCompositeOperation = "source-over";
+        x.strokeStyle = s.color; x.fillStyle = s.color;
+        x.lineCap = "round"; x.lineJoin = "round";
+      }
+      x.lineWidth = s.w;
       if (s.pts.length < 2) {
         var p = s.pts[0];
-        if (p) { x.fillStyle = s.color; x.beginPath(); x.arc(p[0], p[1], s.w / 2, 0, 6.2832); x.fill(); }
-        return;
+        if (p) { x.beginPath(); x.arc(p[0], p[1], s.w / 2, 0, 6.2832); x.fill(); }
+      } else {
+        x.beginPath(); x.moveTo(s.pts[0][0], s.pts[0][1]);
+        for (var i = 1; i < s.pts.length; i++) x.lineTo(s.pts[i][0], s.pts[i][1]);
+        x.stroke();
       }
-      x.beginPath(); x.moveTo(s.pts[0][0], s.pts[0][1]);
-      for (var i = 1; i < s.pts.length; i++) x.lineTo(s.pts[i][0], s.pts[i][1]);
-      x.stroke();
+      x.globalCompositeOperation = "source-over";
     }
     function clearAll() {
       var x = cv.getContext("2d");
@@ -587,7 +609,12 @@
       ev.preventDefault();
       try { cv.setPointerCapture(ev.pointerId); } catch (e) {}
       drawingId = ev.pointerId;
-      act = { color: PAD.color, w: PAD.width, pts: [pos(ev)] };
+      act = {
+        mode: PAD.mode,
+        color: PAD.color,
+        w: PAD.mode === "eraser" ? PAD.eraserW : PAD.width,
+        pts: [pos(ev)]
+      };
       strokes.push(act);
       paint(act);
     });
@@ -597,7 +624,14 @@
       var pts = (ev.getCoalescedEvents && ev.getCoalescedEvents()) || [];
       if (!pts.length) pts = [ev];
       var x = ctxA();
-      x.strokeStyle = act.color; x.lineWidth = act.w;
+      x.lineWidth = act.w;
+      if (act.mode === "eraser") {
+        x.globalCompositeOperation = "destination-out";
+        x.strokeStyle = "rgba(0,0,0,1)"; x.lineCap = "butt";
+      } else {
+        x.globalCompositeOperation = "source-over";
+        x.strokeStyle = act.color; x.lineCap = "round"; x.lineJoin = "round";
+      }
       pts.forEach(function (e2) {
         var p = pos(e2);
         var q = act.pts[act.pts.length - 1];
@@ -605,6 +639,7 @@
         x.beginPath(); x.moveTo(q[0], q[1]); x.lineTo(p[0], p[1]); x.stroke();
         act.pts.push(p);
       });
+      x.globalCompositeOperation = "source-over";
     });
     function end(ev) {
       if (drawingId !== ev.pointerId) return;
@@ -683,7 +718,7 @@
     var padEl = document.getElementById("pad");
     if (!padEl) return;
     padEl.addEventListener("click", function (ev) {
-      var t = ev.target.closest("[data-padcolor],[data-padw],[data-padundo],[data-padclear],[data-padfull],[data-padtoggle]");
+      var t = ev.target.closest("[data-padcolor],[data-padw],[data-padmode],[data-padundo],[data-padclear],[data-padfull],[data-padtoggle]");
       if (!t) return;
       ev.preventDefault();
       if (t.hasAttribute("data-padcolor")) {
@@ -693,10 +728,17 @@
         });
         return;
       }
+      if (t.hasAttribute("data-padmode")) {
+        PAD.mode = t.getAttribute("data-padmode");
+        render();
+        return;
+      }
       if (t.hasAttribute("data-padw")) {
-        PAD.width = parseFloat(t.getAttribute("data-padw"));
+        var wv = parseFloat(t.getAttribute("data-padw"));
+        if (PAD.mode === "eraser") PAD.eraserW = wv; else PAD.width = wv;
         padEl.querySelectorAll("[data-padw]").forEach(function (b) {
-          b.classList.toggle("on", parseFloat(b.getAttribute("data-padw")) === PAD.width);
+          var v2 = parseFloat(b.getAttribute("data-padw"));
+          b.classList.toggle("on", PAD.mode === "eraser" ? v2 === PAD.eraserW : v2 === PAD.width);
         });
         return;
       }
@@ -772,7 +814,9 @@
       extra = '<div class="fb-body" style="font-weight:650;margin-bottom:6px">正确答案：' + esc(c.verdict) + '</div>';
     }
     return '<div class="feedback ' + cls + '"><div class="fb-title">' + title + '</div>' +
-      extra + '<div class="fb-body">' + esc(c.a) + '</div></div>';
+      extra +
+      '<div class="fb-lab">答案与解析' + (c.from ? '　<span class="fb-from">' + esc(c.from) + '</span>' : '') + '</div>' +
+      '<div class="fb-body">' + esc(c.a) + '</div></div>';
   }
 
   function record(grade) {
@@ -951,6 +995,8 @@
       }).join("") + '</div></div>' +
       '<div class="li"><div class="l-main"><b>手写答题板</b><span>每题下方显示画板，手指或 Apple Pencil 都能写</span></div>' +
       '<button class="btn sm" data-act="pad">' + (s.pad === false ? "已关闭" : "已开启") + '</button></div>' +
+      '<div class="li"><div class="l-main"><b>音效</b><span>答对、答错、升星、抽卡的声音</span></div>' +
+      '<button class="btn sm" data-act="sound">' + (s.sound === false ? "已关闭" : "已开启") + '</button></div>' +
       '</div>' +
 
       '<div class="section-title"><span class="h3">数据</span></div>' +
@@ -1010,6 +1056,8 @@
       store.days = data.days || {};
       store.settings = Object.assign(store.settings, data.settings || {});
       store.custom = data.custom || [];
+      store.map = data.map || {};
+      store.bag = data.bag || [];
       save(); rebuildIndex(); toast("已恢复学习进度"); go("home"); return;
     }
     var subjects = [];
@@ -1123,6 +1171,11 @@
           store.settings.pad = !(store.settings.pad !== false);
           save(); toast(store.settings.pad === false ? "已关闭手写板" : "已开启手写板"); render();
         }
+        if (act === "sound") {
+          store.settings.sound = !(store.settings.sound !== false);
+          save(); render();
+          if (store.settings.sound !== false) sfx("right");
+        }
         if (act === "reset") {
           if (confirm("确定清空所有学习进度？题库会保留。")) { store.cards = {}; store.days = {}; save(); toast("已清空进度"); render(); }
         }
@@ -1230,7 +1283,290 @@
     }
   });
 
-  /* ============ 启动 ============ */
+  /* ============ 知识地图 / 闯关 / 卡册 ============ */
+  function ensureMap() {
+    if (!store.map) store.map = {};
+    if (!store.bag) store.bag = [];
+  }
+  ensureMap();
+
+  var L = null;          // 当前闯关状态
+  var MCARD = null;      // 当前抽卡
+  var AC = null;
+
+  function sfx(kind) {
+    if (store.settings.sound === false) return;
+    try {
+      if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+      if (AC.state === "suspended") AC.resume();
+      var seq = {
+        tap: [[620, .05]],
+        right: [[880, .08], [1180, .12]],
+        wrong: [[240, .16]],
+        star: [[660, .08], [880, .08], [1180, .14]],
+        card: [[520, .06], [700, .06], [980, .06], [1340, .16]]
+      }[kind] || [[600, .05]];
+      var g = AC.createGain(); g.connect(AC.destination); g.gain.value = 0.06;
+      var t = AC.currentTime;
+      seq.forEach(function (n) {
+        var o = AC.createOscillator(); o.type = "sine"; o.frequency.value = n[0];
+        o.connect(g); o.start(t); o.stop(t + n[1]); t += n[1] + 0.02;
+      });
+    } catch (e) {}
+  }
+
+  function mapOf(cid) {
+    try { return BANK.map.chapters[cid]; } catch (e) { return null; }
+  }
+
+  function chapterById(cid) {
+    var out = null;
+    allSubjects.forEach(function (s) {
+      (s.chapters || []).forEach(function (c) { if (c.id === cid) out = { subject: s, chapter: c }; });
+    });
+    return out;
+  }
+
+  function cardById(id) {
+    var hit = null;
+    allSubjects.forEach(function (s) {
+      (s.chapters || []).forEach(function (c) {
+        (c.cards || []).forEach(function (k) { if (!hit && k.id === id) hit = k; });
+      });
+    });
+    return hit;
+  }
+
+  function nodeState(id) { ensureMap(); return store.map[id] || { stars: 0 }; }
+
+  function shortLabel(s) {
+    var t = String(s || "").replace(/（.*?）/g, "").replace(/\(.*?\)/g, "").trim();
+    return t.length > 7 ? t.slice(0, 7) + "…" : t;
+  }
+
+  function renderMap(cid) {
+    var info = chapterById(cid);
+    var mp = mapOf(cid);
+    if (!info || !mp) return renderHome();
+    var nodes = mp.nodes;
+    var done = 0, full = 0, starSum = 0;
+    nodes.forEach(function (n) {
+      var st = nodeState(n.id);
+      if (st.stars) done++;
+      if (st.stars >= 3) full++;
+      starSum += (st.stars || 0);
+    });
+
+    function pos(i, total, rx, ry) {
+      var a = (-90 + i * 360 / total) * Math.PI / 180;
+      return [50 + rx * Math.cos(a), 50 + ry * Math.sin(a)];
+    }
+    var r1 = nodes.slice(0, 8), r2 = nodes.slice(8);
+    var chips = [], lines = [];
+    r1.forEach(function (n, i) {
+      var p = pos(i, r1.length, 33, 31);
+      chips.push([n, p]);
+      lines.push('<line x1="50" y1="50" x2="' + p[0] + '" y2="' + p[1] + '"/>');
+    });
+    r2.forEach(function (n, i) {
+      var p = pos(i, r2.length, 45, 43, 22);
+      chips.push([n, p]);
+      lines.push('<line x1="50" y1="50" x2="' + p[0] + '" y2="' + p[1] + '"/>');
+    });
+
+    var chipHtml = chips.map(function (pair) {
+      var n = pair[0], p = pair[1];
+      var st = nodeState(n.id).stars || 0;
+      return '<button class="mnode s' + st + '" style="left:' + p[0].toFixed(2) + '%;top:' + p[1].toFixed(2) + '%" data-node="' + esc(n.id) + '">' +
+        '<span class="mlab">' + esc(shortLabel(n.label)) + '</span>' +
+        '<span class="mstar">' + (st ? "★".repeat(st) : "待闯") + '</span></button>';
+    }).join("");
+
+    return '<div class="wrap">' +
+      '<div class="subhead"><button class="back" data-go="chapter" data-sid="' + esc(info.subject.id) + '" data-cid="' + esc(cid) + '">‹</button>' +
+      '<div class="grow"><div class="h1" style="font-size:24px">' + esc(mp.title) + ' 知识地图</div>' +
+      '<p class="sub">' + (info.subject.short || info.subject.name) + ' · ' + nodes.length + ' 个知识点 · 已闯 ' + done + ' · 三星 ' + full + ' · 共 ' + starSum + '/' + nodes.length * 3 + ' 星</p></div></div>' +
+      '<div class="mapbox"><svg class="maplines" viewBox="0 0 100 100" preserveAspectRatio="none">' + lines.join("") + '</svg>' +
+      '<div class="mcenter"><span>' + esc(mp.title) + '</span><em>' + done + '/' + nodes.length + '</em></div>' +
+      chipHtml + '</div>' +
+      '<p class="maplegend"><i class="lg s0"></i>没学 <i class="lg s1"></i>一星 <i class="lg s2"></i>二星 <i class="lg s3"></i>三星</p>' +
+      '<p class="sub" style="margin-top:10px">点一个知识点进去：先看讲解和配图，再做 3 道小测。全对得三星，60% 以上二星，完成即一星。第一次拿到三星可以抽一张卡。</p>' +
+      '</div>';
+  }
+
+  function startLesson(cid, nodeId) {
+    var mp = mapOf(cid);
+    var nd = mp && mp.nodes.filter(function (x) { return x.id === nodeId; })[0];
+    if (!nd) return;
+    L = {
+      cid: cid, nd: nd, i: 0, step: "read", correct: 0,
+      answered: false, ok: false, sel: [], shown: false,
+      quiz: (nd.quiz || []).map(function (q) { return cardById(q.id); }).filter(Boolean)
+    };
+    if (!L.quiz.length) L.quiz = [];
+    go("lesson");
+  }
+
+  function renderLesson() {
+    if (!L) return renderHome();
+    var nd = L.nd;
+    var step = L.step === "read" ? "第 1 步 · 讲解" : (L.step === "quiz" ? "第 2 步 · 小测" : "结算");
+    var head = '<div class="wrap"><div class="subhead"><button class="back" data-mapback="1">‹</button>' +
+      '<div class="grow"><div class="h1" style="font-size:23px">' + esc(nd.label) + '</div>' +
+      '<p class="sub">' + "★".repeat(nd.stars) + ' · ' + step + '</p></div></div>';
+
+    if (L.step === "read") {
+      return head +
+        '<div class="card lesson"><div class="lesson-lab">一句话要点</div>' +
+        '<p class="lesson-text">' + esc(nd.point || "（这一条暂无要点文字，先按教材小节过一遍）") + '</p>' +
+        (nd.imgs && nd.imgs.length
+          ? nd.imgs.map(function (s) { return '<figure class="lfig"><img loading="lazy" src="' + esc(s) + '" alt=""><figcaption>教材／课件原图</figcaption></figure>'; }).join("")
+          : '<p class="sub" style="margin-top:8px">本条暂无配图，按要点理解即可。</p>') +
+        '</div>' +
+        (L.quiz.length ? '<button class="btn primary block lg" data-lstart="1">开始小测 · ' + L.quiz.length + ' 题</button>'
+          : '<button class="btn primary block lg" data-lfinish="1">完成这一节</button>') +
+        '</div>';
+    }
+
+    if (L.step === "quiz") {
+      var c = L.quiz[L.i];
+      if (!c) return finishLessonHtml();
+      var answerZone = "";
+      if (c.type === "mcq") {
+        answerZone = '<div class="options" id="loptions">' + (c.options || []).map(function (o, i) {
+          var letter = "ABCDE"[i];
+          var cls = "";
+          if (L.answered) {
+            var right = (c.key || "").split("").indexOf(letter) >= 0;
+            if (right) cls = "right";
+            else if (L.sel.indexOf(letter) >= 0) cls = "wrong";
+            else cls = "dim";
+          } else if (L.sel.indexOf(letter) >= 0) cls = "sel";
+          return '<button class="option ' + cls + '" data-lopt="' + letter + '">' +
+            '<span class="key">' + letter + '</span><span>' + esc(o) + '</span></button>';
+        }).join("") + '</div>';
+      } else if (c.type === "tf") {
+        answerZone = '<div class="tf-row">' + ['对', '错'].map(function (t) {
+          var cls = "";
+          if (L.answered) { if (c.verdict === t) cls = "right"; else if (L.sel.indexOf(t) >= 0) cls = "wrong"; }
+          return '<button class="tf-btn ' + cls + '" data-ltf="' + t + '">' + t + '</button>';
+        }).join("") + '</div>';
+      } else {
+        answerZone = '<button class="btn block sm" data-lshow="1">' + (L.shown ? "收起答案" : "看答案") + '</button>' +
+          (L.shown ? '<div class="answer-reveal"><span class="lab">参考答案</span>' + esc(c.a) + '</div>' +
+            (!L.answered ? '<div class="rate-row" style="margin-top:12px">' +
+              '<button class="rate g0" data-lself="0">没想起来</button>' +
+              '<button class="rate g2" data-lself="1">想起来了</button></div>' : "") : "");
+      }
+
+      return head +
+        '<div class="q-card" style="margin:0"><div class="q-tags"><span class="pill">' + TYPE_LABEL[c.type] + '</span>' +
+        '<span class="pill">' + (L.i + 1) + ' / ' + L.quiz.length + '</span></div>' +
+        '<div class="q-stem">' + formatStem(c.q) + '</div>' + answerZone +
+        (c.type === "mcq" && L.answered ? '<div class="feedback ' + (L.ok ? "good" : "bad") + '"><div class="fb-lab">答案与解析</div><div class="fb-body">' + esc(c.a) + '</div></div>' : "") +
+        '</div>' +
+        (L.answered ? '<button class="btn primary block lg" data-lnext="1">下一题</button>' : "") +
+        '</div>';
+    }
+    return finishLessonHtml();
+  }
+
+  function finishLessonHtml() {
+    var total = L.quiz.length || 0;
+    var ratio = total ? L.correct / total : 1;
+    var stars = total ? (L.correct === total ? 3 : (ratio >= 0.6 ? 2 : 1)) : 1;
+    var st = store.map[L.nd.id] || { stars: 0 };
+    L.stars = stars;
+    var canDraw = stars >= 3 && !st.rewarded;
+    return '<div class="wrap"><div class="subhead"><button class="back" data-mapback="1">‹</button>' +
+      '<div class="grow"><div class="h1" style="font-size:23px">' + esc(L.nd.label) + '</div>' +
+      '<p class="sub">答对 ' + L.correct + ' / ' + total + '</p></div></div>' +
+      '<div class="card result-hero"><div class="bigstars">' +
+      [1, 2, 3].map(function (i) { return '<span class="bs' + (i <= stars ? " on" : "") + '">★</span>'; }).join("") +
+      '</div><p class="sub">' + (stars === 3 ? "完美通关，这一段拿满三星！" : stars === 2 ? "差一点满分，再刷一遍就三星了" : "先混个脸熟，回去再闯一次") + '</p></div>' +
+      (canDraw ? '<button class="btn primary block lg" data-draw="' + esc(L.nd.id) + '">🎁 三星奖励 · 抽一张卡</button>' : '') +
+      '<div class="row" style="gap:10px;margin-top:10px">' +
+      '<button class="btn block" data-lagain="1">再闯一次</button>' +
+      '<button class="btn block" data-mapback="1">回到地图</button>' +
+      '</div></div>';
+  }
+
+  function finishLesson() {
+    var total = L.quiz.length || 0;
+    var stars = total ? (L.correct === total ? 3 : (L.correct / total >= 0.6 ? 2 : 1)) : 1;
+    var totalStars = Math.max(1, Math.min(3, stars));
+    var st = store.map[L.nd.id] || { stars: 0 };
+    st.stars = Math.max(st.stars || 0, totalStars);
+    st.ts = today();
+    store.map[L.nd.id] = st;
+    save();
+    sfx("star");
+    L.step = "done";
+    render();
+  }
+
+  function drawCard(nodeId) {
+    var ch = L && L.cid;
+    var info = chapterById(ch);
+    var pool = [];
+    if (info) {
+      (info.chapter.cards || []).forEach(function (c) {
+        if (["mcq", "tf", "fill", "term", "short", "calc", "essay", "point"].indexOf(c.type) >= 0 && (c.stars || 0) >= 4) pool.push(c);
+      });
+    }
+    if (!pool.length && L && L.quiz.length) pool = L.quiz;
+    if (!pool.length) { toast("这一章暂时没有可抽的卡"); return; }
+    var r = Math.random();
+    var rarity = r < 0.1 ? "SR" : (r < 0.4 ? "R" : "N");
+    var list = pool.filter(function (c) { return (c.stars || 0) >= (rarity === "SR" ? 5 : 4); });
+    if (!list.length) list = pool;
+    var pick = list[Math.floor(Math.random() * list.length)];
+    MCARD = {
+      id: "bag" + Date.now().toString(36) + Math.floor(Math.random() * 999),
+      q: pick.q, a: pick.a, rarity: rarity,
+      from: pick.from || "", ts: Date.now(), flipped: false
+    };
+    store.bag.push({ id: MCARD.id, q: MCARD.q, a: MCARD.a, rarity: MCARD.rarity, from: MCARD.from, ts: MCARD.ts });
+    var st = store.map[nodeId] || {};
+    st.rewarded = true;
+    store.map[nodeId] = st;
+    save();
+    sfx("card");
+    renderCardModal();
+  }
+
+  function renderCardModal() {
+    var old = document.querySelector(".cardmask");
+    if (old) old.remove();
+    if (!MCARD) return;
+    var wrap = document.createElement("div");
+    wrap.className = "cardmask";
+    wrap.innerHTML = '<div class="cmod"><div class="cmod-tip">' + (MCARD.flipped ? "收进卡册了" : "点一下翻开") + '</div>' +
+      '<div class="mgcard ' + (MCARD.flipped ? "flip r" + MCARD.rarity : "") + '">' +
+      (MCARD.flipped
+        ? '<div class="mg-rar">' + MCARD.rarity + '</div><div class="mg-q">' + esc(MCARD.q) + '</div><div class="mg-a">' + esc(MCARD.a) + '</div>'
+        : '<div class="mg-back">866</div><div class="mg-backtip">' + MCARD.rarity + ' 卡</div>') +
+      '</div>' +
+      '<button class="btn primary block" data-closecard="1">' + (MCARD.flipped ? "收进卡册" : "翻开") + '</button></div>';
+    document.body.appendChild(wrap);
+  }
+
+  function renderBag() {
+    ensureMap();
+    var list = store.bag.slice().sort(function (a, b) { return b.ts - a.ts; });
+    return '<div class="wrap"><div class="subhead"><button class="back" data-go="home">‹</button>' +
+      '<div class="grow"><div class="h1" style="font-size:24px">卡册</div>' +
+      '<p class="sub">共 ' + list.length + ' 张 · 三星闯关抽到的卡都在这</p></div></div>' +
+      (list.length ? '<div class="baggrid">' + list.map(function (c) {
+        return '<button class="bagcard r' + esc(c.rarity) + '" data-bag="' + esc(c.id) + '">' +
+          '<span class="bag-rar">' + esc(c.rarity) + '</span>' +
+          '<span class="bag-q">' + esc(String(c.q).slice(0, 42)) + '</span></button>';
+      }).join("") + '</div>' +
+        '<div class="card" id="bagDetail" style="margin-top:14px;display:none"></div>'
+        : '<div class="card"><p class="sub">还没有卡。把任意一章地图里的知识点闯到三星，就能抽第一张。</p></div>') +
+      '</div>';
+  }
+
   applyTheme();
   render();
 
@@ -1241,6 +1577,92 @@
     resizeTimer = setTimeout(function () {
       if (S && S.padCtl && document.getElementById("padCanvas")) S.padCtl.fit();
     }, 120);
+  });
+
+  /* ============ 地图 / 闯关事件（全局一次） ============ */
+  document.body.addEventListener("click", function (ev) {
+    var t;
+    if ((t = ev.target.closest("[data-map]"))) {
+      sfx("tap"); go("map", { cid: t.getAttribute("data-map") }); return;
+    }
+    if ((t = ev.target.closest("[data-node]"))) {
+      sfx("tap"); startLesson(view.params.cid, t.getAttribute("data-node")); return;
+    }
+    if ((t = ev.target.closest("[data-lstart]"))) {
+      if (!L) return;
+      sfx("tap");
+      if (!L.quiz.length) { finishLesson(); return; }
+      L.step = "quiz"; L.i = 0; L.correct = 0; L.answered = false; L.sel = []; L.shown = false;
+      render(); return;
+    }
+    if ((t = ev.target.closest("[data-lshow]"))) {
+      L.shown = !L.shown; render(); return;
+    }
+    if ((t = ev.target.closest("[data-lopt]"))) {
+      if (!L || L.answered) return;
+      var c = L.quiz[L.i];
+      var key = (c.key || "").split("");
+      var letter = t.getAttribute("data-lopt");
+      L.sel = [letter];
+      L.answered = true;
+      L.ok = key.length === 1 && key[0] === letter;
+      if (L.ok) L.correct++;
+      sfx(L.ok ? "right" : "wrong");
+      render(); return;
+    }
+    if ((t = ev.target.closest("[data-ltf]"))) {
+      if (!L || L.answered) return;
+      var c2 = L.quiz[L.i];
+      var v = t.getAttribute("data-ltf");
+      L.sel = [v];
+      L.answered = true;
+      L.ok = c2.verdict === v;
+      if (L.ok) L.correct++;
+      sfx(L.ok ? "right" : "wrong");
+      render(); return;
+    }
+    if ((t = ev.target.closest("[data-lself]"))) {
+      if (!L || L.answered) return;
+      L.answered = true;
+      L.ok = t.getAttribute("data-lself") === "1";
+      if (L.ok) L.correct++;
+      sfx(L.ok ? "right" : "wrong");
+      render(); return;
+    }
+    if ((t = ev.target.closest("[data-lnext]"))) {
+      L.i++;
+      L.answered = false; L.sel = []; L.shown = false;
+      if (L.i >= L.quiz.length) finishLesson(); else render();
+      return;
+    }
+    if ((t = ev.target.closest("[data-lfinish]"))) { finishLesson(); return; }
+    if ((t = ev.target.closest("[data-lagain]"))) {
+      L.i = 0; L.correct = 0; L.answered = false; L.sel = []; L.shown = false;
+      L.step = "read"; render(); return;
+    }
+    if ((t = ev.target.closest("[data-mapback]"))) { sfx("tap"); go("map", { cid: L ? L.cid : "" }); return; }
+    if ((t = ev.target.closest("[data-draw]"))) { drawCard(t.getAttribute("data-draw")); return; }
+    if ((t = ev.target.closest("[data-closecard]"))) {
+      if (MCARD && !MCARD.flipped) { MCARD.flipped = true; renderCardModal(); return; }
+      var m = document.querySelector(".cardmask"); if (m) m.remove();
+      MCARD = null; render(); return;
+    }
+    if (ev.target.classList && ev.target.classList.contains("cardmask")) {
+      var m2 = document.querySelector(".cardmask"); if (m2) m2.remove();
+      MCARD = null; render(); return;
+    }
+    if ((t = ev.target.closest("[data-bag]"))) {
+      var bc = (store.bag || []).filter(function (x) { return x.id === t.getAttribute("data-bag"); })[0];
+      var det = document.getElementById("bagDetail");
+      if (bc && det) {
+        det.style.display = "block";
+        det.innerHTML = '<div class="row between" style="margin-bottom:8px"><b> ' + esc(bc.rarity) + ' 卡</b>' +
+          '<span class="sub">' + (bc.from ? esc(bc.from) : "") + '</span></div>' +
+          '<div class="q-stem" style="font-size:17px">' + esc(bc.q) + '</div>' +
+          '<div class="fb-lab">答案与解析</div><div class="fb-body">' + esc(bc.a) + '</div>';
+      }
+      return;
+    }
   });
 
   if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
