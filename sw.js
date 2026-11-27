@@ -1,4 +1,4 @@
-const CACHE = "866-v5";
+const CACHE = "866-v6";
 const ASSETS = ["./", "./index.html", "./styles.css", "./app.js", "./data.js", "./manifest.webmanifest", "./icon-180.png", "./icon-192.png"];
 
 self.addEventListener("install", (e) => {
@@ -21,6 +21,7 @@ self.addEventListener("fetch", (e) => {
     }).catch(() => caches.match("./index.html"))
   );
 });
+
 
 
 

@@ -219,6 +219,10 @@
   function buildQueue(mode, opts) {
     var all = [];
     allChapters().forEach(function (x) { all = all.concat(entriesOf(x.chapter, x.subject)); });
+    if (mode === "cards") {
+      var wanted = opts.ids || [];
+      return wanted.map(function (id) { return all.filter(function (e) { return e.card.id === id; })[0]; }).filter(Boolean);
+    }
     if (mode === "today") {
       var due = all.filter(function (e) { return isDue(e.card.id); });
       due = weightedOrder(due);
@@ -385,7 +389,7 @@
         '<span class="ch-no">' + (ch.no < 10 ? "0" + ch.no : ch.no) + '</span>' +
         '<span class="ch-main"><span class="ch-name">' + esc(ch.title || ch.name) +
         '<span class="stars">' + stars(imp) + '</span>' +
-        (ch.hot >= 6 ? '<span class="pill warn" style="height:19px;padding:0 6px;font-size:10.5px">高频 ' + ch.hot + '</span>' : '') +
+        (ch.hot >= 6 ? '<span class="pill warn" style="height:19px;padding:0 6px;font-size:10.5px">重点 ' + ch.hot + '</span>' : '') +
         '</span>' +
         '<span class="ch-sub"><span>' + ch.cards.length + ' 题</span><span>掌握 ' + st.mastered + '</span>' +
         (st.due ? '<span style="color:var(--warn)">待复习 ' + st.due + '</span>' : '') + '</span>' +
@@ -523,15 +527,17 @@
   var PAD_WIDTHS = [[1.6, "细"], [2.8, "中"], [5, "粗"]];
   var PAD_ERASERS = [[14, "小"], [24, "中"], [36, "大"]];
 
+  function padHost() { return view.name === "lesson" ? LPAD : S; }
+
   function padCardId() {
+    if (view.name === "lesson" && L) return "L:" + L.nd.id + ":" + L.i + ":" + L.step;
     if (S) { var e = cur(); return e ? e.card.id : ""; }
-    if (L) return "L:" + L.nd.id + ":" + L.i + ":" + L.step;
     return "pad";
   }
 
   function padHtml() {
     if (store.settings.pad === false) return "";
-    var H = S || LPAD;
+    var H = padHost();
     var open = H.padOpen !== false;
     return '<div class="pad' + (open ? "" : " off") + (H.padFull ? " full" : "") + '" id="pad">' +
       '<div class="pad-bar">' +
@@ -557,7 +563,7 @@
   function mountPad() {
     var cv = document.getElementById("padCanvas");
     if (!cv) return;
-    var H = S || LPAD;
+    var H = padHost();
     var cid = padCardId();
     if (!H.pad) H.pad = {};
     var strokes = H.pad[cid] || (H.pad[cid] = []);
@@ -737,7 +743,7 @@
   function bindPad() {
     var padEl = document.getElementById("pad");
     if (!padEl) return;
-    var H = S || LPAD;
+    var H = padHost();
     padEl.addEventListener("click", function (ev) {
       var t = ev.target.closest("[data-padcolor],[data-padw],[data-padmode],[data-padundo],[data-padclear],[data-padfull],[data-padtoggle]");
       if (!t) return;
@@ -1427,6 +1433,73 @@
     return out;
   }
 
+  function examLabel(id) {
+    var c = cardById(id);
+    if (!c) return "真题";
+    var sec = String(c.sec || "").replace(/^[一二三四五六七八九十]+、/, "").replace(/（.*?）/g, "");
+    return id.slice(4, 8) + " · " + sec + (c.num ? " " + c.num : "");
+  }
+
+  function chapterFlowHtml(s) {
+    var items = [];
+    (s.chapters || []).forEach(function (ch, i) {
+      var mp = mapOf(ch.id);
+      if (!mp || !mp.logic) return;
+      if (items.length) items.push('<span class="flow-arrow">→</span>');
+      items.push('<button class="flow-ch" data-map="' + esc(ch.id) + '">' +
+        '<b>' + (ch.no < 10 ? "0" + ch.no : ch.no) + ' ' + esc(ch.title) + '</b>' +
+        '<span>' + esc(mp.logic.question) + '</span></button>');
+    });
+    if (!items.length) return "";
+    return '<div class="section-title"><span class="h3">' + esc(s.name) + ' · 章节逻辑主线</span></div>' +
+      '<div class="flowline">' + items.join("") + '</div>';
+  }
+
+  function chapterLogicHtml(cid) {
+    var mp = mapOf(cid), lg = mp && mp.logic;
+    if (!lg) return "";
+    function chBtn(id, fallback, cls) {
+      if (!id) return '<span class="logic-edge ' + cls + '">' + esc(fallback) + '</span>';
+      var info = chapterById(id);
+      return '<button class="logic-edge ' + cls + '" data-map="' + esc(id) + '">' + esc(info ? info.chapter.title : id) + '</button>';
+    }
+    var related = (lg.links || []).map(function (x) {
+      var info = chapterById(x.cid);
+      return '<button class="rel-link" data-map="' + esc(x.cid) + '"><b>↗ ' + esc(info ? info.chapter.title : x.cid) + '</b><span>' + esc(x.text) + '</span></button>';
+    }).join("");
+    return '<section class="logic-card">' +
+      '<div class="logic-kicker">本章解决的问题</div><h2>' + esc(lg.question) + '</h2>' +
+      '<p class="logic-role">' + esc(lg.role) + '</p>' +
+      '<div class="logic-chain">' + chBtn(lg.prev, "起点", "prev") +
+      '<span class="logic-arrow">→</span><span class="logic-now">' + esc(mp.title) + '</span>' +
+      '<span class="logic-arrow">→</span>' + chBtn(lg.next, "本科目终点", "next") + '</div>' +
+      '<div class="logic-io"><span><b>输入</b>' + esc(lg.input) + '</span><span><b>输出</b>' + esc(lg.output) + '</span></div>' +
+      (related ? '<div class="rel-title">跨章连接 · 为什么学它</div><div class="rel-grid">' + related + '</div>' : '') +
+      '</section>';
+  }
+
+  function chapterFocusHtml(cid) {
+    var mp = mapOf(cid), lg = mp && mp.logic;
+    if (!lg) return "";
+    var focus = (lg.focus || []).map(function (x, i) { return '<li><b>' + (i + 1) + '</b><span>' + esc(x) + '</span></li>'; }).join("");
+    var common = (lg.common || []).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join("");
+    var refs = (mp.examRefs || []);
+    var exams = refs.map(function (id) {
+      var c = cardById(id);
+      if (!c) return "";
+      return '<button class="exam-link" data-exam="' + esc(id) + '"><span class="exam-year">' + esc(examLabel(id)) + '</span>' +
+        '<span>' + esc(String(c.q).replace(/\s+/g, " ").slice(0, 54)) + '…</span><i>练这题 ›</i></button>';
+    }).join("");
+    var audit = mp.audit || {};
+    return '<section class="review-card"><div class="review-head"><b>本章重点与常考题 · 已复核</b>' +
+      '<span>资料 ' + (audit.sourceNodes || 0) + ' 条' + (audit.added ? '＋补漏 ' + audit.added : '') + '</span></div>' +
+      '<div class="review-cols"><div><h4>必须掌握</h4><ol class="focus-list">' + focus + '</ol></div>' +
+      '<div><h4>常见设问</h4><ul class="common-list">' + common + '</ul></div></div>' +
+      (refs.length ? '<div class="rel-title">已录原卷中的对应题 · 点击直接练</div><div class="exam-list">' + exams + '</div>'
+        : '<p class="no-direct-exam">已录 2021—2023 原卷中未单列本章直接题；它仍是后续章节的概念基础，不能据此认定“不考”。</p>') +
+      '<p class="audit-note">' + esc(audit.scope || "") + ' 当前有 ' + (audit.withQuiz || 0) + '/' + (audit.nodes || 0) + ' 个知识点带对应小测；不再用无关题凑满 3 题。</p></section>';
+  }
+
   function renderMaps() {
     var tot = mapTotals();
     var pct = tot.maxstars ? Math.round(tot.stars / tot.maxstars * 100) : 0;
@@ -1441,15 +1514,17 @@
           starSum += st.stars || 0;
         });
         var p = nodes.length ? Math.round(done / nodes.length * 100) : 0;
+        var q = mp.logic ? mp.logic.question : "";
         return '<button class="maps-row" data-map="' + esc(ch.id) + '">' +
           '<span class="mr-no">' + (ch.no < 10 ? "0" + ch.no : ch.no) + '</span>' +
           '<span class="mr-main"><span class="mr-name">' + esc(ch.title || ch.name) + '</span>' +
+          '<span class="mr-question">' + esc(q) + '</span>' +
           '<span class="mr-sub">' + nodes.length + ' 个知识点 · 结算 ' + starSum + ' / ' + (nodes.length * 3) + ' 星</span>' +
           '<div class="bar"><i style="width:' + p + '%;background:linear-gradient(90deg,#ff9ec7,#ff4fa3)"></i></div></span>' +
           '<span class="mr-pct">' + done + '/' + nodes.length + '</span></button>';
       }).join("");
       if (!rows) return "";
-      return '<div class="section-title"><span class="h3">' + esc(s.name) + ' · 知识地图</span></div><div class="maps-group">' + rows + '</div>';
+      return chapterFlowHtml(s) + '<div class="section-title"><span class="h3">按章进入地图</span></div><div class="maps-group">' + rows + '</div>';
     }).join("");
 
     return '<div class="wrap">' +
@@ -1458,9 +1533,9 @@
       '<div class="mh-big">' + tot.stars + '<span> / ' + tot.maxstars + ' 星</span></div>' +
       '<p class="mh-note">已闯 ' + tot.studied + ' 个知识点 · 三星 ' + tot.three + ' 个 · 共 ' + tot.nodes + ' 个知识点</p>' +
       '<div class="bar"><i style="width:' + pct + '%;background:linear-gradient(90deg,#ff9ec7,#ff4fa3)"></i></div>' +
-      '<p class="mh-tip">点进任意章节：看讲解配图 → 做 3 道小测 → 全对拿三星 → 抽卡进卡册。</p></div>' +
-      groups +
-      '</div>';
+      '<p class="mh-tip">先看章节逻辑，再点知识点：讲解与配图 → 对应小测 → 得星 → 三星抽卡。</p></div>' +
+      '<div class="logic-bridge"><b>两门课怎样接上？</b><span>高化回答“链怎样合成与控制”；高物回答“这些链结构和运动为什么产生相应性能”。每章地图还列有跨章连接。</span></div>' +
+      groups + '</div>';
   }
 
   function renderMap(cid) {
@@ -1496,7 +1571,7 @@
     var chipHtml = chips.map(function (pair) {
       var n = pair[0], p = pair[1];
       var st = nodeState(n.id).stars || 0;
-      return '<button class="mnode s' + st + '" style="left:' + p[0].toFixed(2) + '%;top:' + p[1].toFixed(2) + '%" data-node="' + esc(n.id) + '">' +
+      return '<button class="mnode s' + st + (n.added ? " added" : "") + '" title="' + esc(n.fullLabel || n.label) + '" style="left:' + p[0].toFixed(2) + '%;top:' + p[1].toFixed(2) + '%" data-node="' + esc(n.id) + '">' +
         '<span class="mlab">' + esc(shortLabel(n.label)) + '</span>' +
         '<span class="mstar">' + (st ? "★".repeat(st) : "待闯") + '</span></button>';
     }).join("");
@@ -1505,11 +1580,13 @@
       '<div class="subhead"><button class="back" data-go="chapter" data-sid="' + esc(info.subject.id) + '" data-cid="' + esc(cid) + '">‹</button>' +
       '<div class="grow"><div class="h1" style="font-size:24px">' + esc(mp.title) + ' 知识地图</div>' +
       '<p class="sub">' + (info.subject.short || info.subject.name) + ' · ' + nodes.length + ' 个知识点 · 已闯 ' + done + ' · 三星 ' + full + ' · 共 ' + starSum + '/' + nodes.length * 3 + ' 星</p></div></div>' +
+      chapterLogicHtml(cid) +
       '<div class="mapbox"><svg class="maplines" viewBox="0 0 100 100" preserveAspectRatio="none">' + lines.join("") + '</svg>' +
       '<div class="mcenter"><span>' + esc(mp.title) + '</span><em>' + done + '/' + nodes.length + '</em></div>' +
       chipHtml + '</div>' +
-      '<p class="maplegend"><i class="lg s0"></i>没学 <i class="lg s1"></i>一星 <i class="lg s2"></i>二星 <i class="lg s3"></i>三星</p>' +
-      '<p class="sub" style="margin-top:10px">点一个知识点进去：先看讲解和配图，再做 3 道小测。全对得三星，60% 以上二星，完成即一星。第一次拿到三星可以抽一张卡。</p>' +
+      '<p class="maplegend"><i class="lg s0"></i>没学 <i class="lg s1"></i>一星 <i class="lg s2"></i>二星 <i class="lg s3"></i>三星 <i class="lg added-dot"></i>真题补漏</p>' +
+      '<p class="sub" style="margin-top:10px">点一个知识点：先看完整讲解和配图，再做对应小测（题数按实际相关题，不再硬凑 3 题）。全对三星，60% 以上二星，完成一星；首次三星可抽卡。</p>' +
+      chapterFocusHtml(cid) +
       '</div>';
   }
 
@@ -1529,7 +1606,7 @@
   function noteHtml(nd) {
     var notes = nd.notes || [];
     if (!notes.length) return "";
-    return '<div class="lnotes"><div class="lesson-lab">知识要点 · 资料原文</div>' +
+    return '<div class="lnotes"><div class="lesson-lab">' + esc(nd.notesTitle || "知识要点 · 分章节资料原文") + '</div>' +
       notes.map(function (n) {
         var body = String(n.t || "").split(/\n+/).map(function (ln) {
           ln = ln.trim();
@@ -1546,8 +1623,8 @@
     var nd = L.nd;
     var step = L.step === "read" ? "第 1 步 · 讲解" : (L.step === "quiz" ? "第 2 步 · 小测" : "结算");
     var head = '<div class="wrap"><div class="subhead"><button class="back" data-mapback="1">‹</button>' +
-      '<div class="grow"><div class="h1" style="font-size:23px">' + esc(nd.label) + '</div>' +
-      '<p class="sub">' + "★".repeat(nd.stars) + ' · ' + step + '</p></div></div>';
+      '<div class="grow"><div class="h1" style="font-size:23px">' + esc(nd.fullLabel || nd.label) + '</div>' +
+      '<p class="sub">资料重要度 ' + "★".repeat(nd.stars) + (nd.added ? ' · 真题补漏' : '') + ' · ' + step + '</p></div></div>';
 
     if (L.step === "read") {
       return head +
@@ -1562,7 +1639,7 @@
             }).join("") + '</div>'
           : '<p class="sub" style="margin:8px 2px">本条暂无配图，按上面的文字要点理解即可。</p>') +
         (L.quiz.length ? '<button class="btn primary block lg" data-lstart="1">开始小测 · ' + L.quiz.length + ' 题</button>'
-          : '<button class="btn primary block lg" data-lfinish="1">完成这一节</button>') +
+          : '<p class="no-direct-exam">现有资料中暂未找到与本知识点精准对应的小测，不拿无关题凑数；请先按讲解学习并完成本节。</p><button class="btn primary block lg" data-lfinish="1">完成这一节</button>') +
         '</div>';
     }
 
@@ -1582,7 +1659,8 @@
           } else if (L.sel.indexOf(letter) >= 0) cls = "sel";
           return '<button class="option ' + cls + '" data-lopt="' + letter + '">' +
             '<span class="key">' + letter + '</span><span>' + esc(o) + '</span></button>';
-        }).join("") + '</div>';
+        }).join("") + '</div>' +
+          ((c.key || "").length > 1 && !L.answered ? '<p class="q-hint">多选题：可选多个选项</p><button class="btn primary block" data-lsubmit="1">提交答案</button>' : '');
       } else if (c.type === "tf") {
         answerZone = '<div class="tf-row">' + ['对', '错'].map(function (t) {
           var cls = "";
@@ -1600,7 +1678,8 @@
       return head +
         '<div class="q-card" style="margin:0"><div class="q-tags"><span class="pill">' + TYPE_LABEL[c.type] + '</span>' +
         '<span class="pill">' + (L.i + 1) + ' / ' + L.quiz.length + '</span></div>' +
-        '<div class="q-stem">' + formatStem(c.q) + '</div>' + answerZone +
+        '<div class="q-stem">' + formatStem(c.q) + '</div>' +
+        (c.from ? '<p class="q-src">来源：' + esc(c.from) + '</p>' : '') + answerZone +
         (c.type === "mcq" && L.answered ? '<div class="feedback ' + (L.ok ? "good" : "bad") + '"><div class="fb-lab">答案与解析</div><div class="fb-body">' + esc(c.a) + '</div></div>' : "") +
         '</div>' +
         padHtml() +
@@ -1716,7 +1795,7 @@
   window.addEventListener("resize", function () {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function () {
-      var HH = S || LPAD;
+      var HH = padHost();
       if (HH && HH.padCtl && document.getElementById("padCanvas")) HH.padCtl.fit();
     }, 120);
   });
@@ -1724,6 +1803,9 @@
   /* ============ 地图 / 闯关事件（全局一次） ============ */
   document.body.addEventListener("click", function (ev) {
     var t;
+    if ((t = ev.target.closest("[data-exam]"))) {
+      sfx("tap"); startSession("cards", { ids: [t.getAttribute("data-exam")], title: "本章对应真题" }); return;
+    }
     if ((t = ev.target.closest("[data-map]"))) {
       sfx("tap"); go("map", { cid: t.getAttribute("data-map") }); return;
     }
@@ -1745,6 +1827,11 @@
       var c = L.quiz[L.i];
       var key = (c.key || "").split("");
       var letter = t.getAttribute("data-lopt");
+      if (key.length > 1) {
+        var at = L.sel.indexOf(letter);
+        if (at >= 0) L.sel.splice(at, 1); else L.sel.push(letter);
+        render(); return;
+      }
       L.sel = [letter];
       L.answered = true;
       L.ok = key.length === 1 && key[0] === letter;
@@ -1752,6 +1839,14 @@
       sfx(L.ok ? "right" : "wrong");
       voice(L.ok ? "right" : "wrong");
       render(); return;
+    }
+    if ((t = ev.target.closest("[data-lsubmit]"))) {
+      if (!L || L.answered) return;
+      var cm = L.quiz[L.i], km = (cm.key || "").split("");
+      L.answered = true;
+      L.ok = km.length > 0 && km.every(function (x) { return L.sel.indexOf(x) >= 0; }) && L.sel.length === km.length;
+      if (L.ok) L.correct++;
+      sfx(L.ok ? "right" : "wrong"); voice(L.ok ? "right" : "wrong"); render(); return;
     }
     if ((t = ev.target.closest("[data-ltf]"))) {
       if (!L || L.answered) return;
