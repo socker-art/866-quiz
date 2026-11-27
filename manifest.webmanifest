@@ -1,7 +1,7 @@
 {
-  "name": "866 刷题 · 高物高化",
-  "short_name": "866 刷题",
-  "description": "高分子物理与高分子化学本地题库 · 间隔重复刷题",
+  "name": "考研刷题 · 866＋数学",
+  "short_name": "考研刷题",
+  "description": "866、高等数学、线性代数与2017—2026数学二真题 · 闯关复习 · 手写刷题",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

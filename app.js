@@ -498,7 +498,7 @@
       (c.src === "真题" ? '<span class="pill bad">真题</span>' : '') +
       (c.stars >= 4 ? '<span class="pill warn">' + stars(c.stars) + '</span>' : '') +
       '</div>' +
-      '<div class="q-stem">' + formatStem(c.q) + '</div>' +
+      '<div class="q-stem">' + formatStem(c.q) + '</div>' + cardMediaHtml(c, "q") +
       (c.from ? '<p class="q-src">来源：' + esc(c.from) + '</p>' : "") +
       padHtml() +
       (["term", "short", "calc", "essay", "fill", "point"].indexOf(c.type) >= 0 && !S.revealed && !S.answered
@@ -508,7 +508,7 @@
       (c.type === "mcq" && !(S.answered || S.revealed) ? (
         keyOf(c).length > 1 ? '<p class="q-hint">多选题，选完后点提交</p>' : '<p class="q-hint">点选项即判分</p>'
       ) : "") +
-      (S.revealed && !S.answered ? '<div class="answer-reveal"><span class="lab">参考答案</span>' + esc(c.a) + '</div>' : "") +
+      (S.revealed && !S.answered ? '<div class="answer-reveal"><span class="lab">' + (c.math ? '考研步骤导读＋原推导' : '参考答案') + '</span>' + esc(c.a) + '</div>' + cardMediaHtml(c, "a") : "") +
       (S.answered ? feedbackHtml(c) : "") +
       '</div>' +
 
@@ -519,6 +519,15 @@
     var t = esc(q);
     t = t.replace(/＿{2,}/g, '<span class="blank"></span>');
     return t;
+  }
+
+  function cardMediaHtml(c, kind) {
+    var srcs = kind === "q" ? (c.qimgs || []) : (c.aimgs || []);
+    if (!srcs.length) return "";
+    return '<div class="card-media ' + (kind === "q" ? 'question-media' : 'answer-media') + '">' +
+      srcs.map(function (src, i) {
+        return '<img src="' + esc(src) + '" alt="' + (kind === "q" ? '原题高清图' : '原解析高清图') + (i + 1) + '" loading="lazy" data-imgzoom="' + esc(src) + '">';
+      }).join("") + (kind === "q" ? '<p class="media-tip">公式以原题高清图为准 · 点图可放大</p>' : '<p class="media-tip">原解析高清图 · 点图可放大核对公式</p>') + '</div>';
   }
 
   /* ============ 手写答题板 ============ */
@@ -843,7 +852,7 @@
     return '<div class="feedback ' + cls + '"><div class="fb-title">' + title + '</div>' +
       extra +
       '<div class="fb-lab">答案与解析' + (c.from ? '　<span class="fb-from">' + esc(c.from) + '</span>' : '') + '</div>' +
-      '<div class="fb-body">' + esc(c.a) + '</div></div>';
+      '<div class="fb-body">' + esc(c.a) + '</div></div>' + cardMediaHtml(c, "a");
   }
 
   function record(grade) {
@@ -1496,7 +1505,7 @@
       '<div class="review-cols"><div><h4>必须掌握</h4><ol class="focus-list">' + focus + '</ol></div>' +
       '<div><h4>常见设问</h4><ul class="common-list">' + common + '</ul></div></div>' +
       (refs.length ? '<div class="rel-title">已录原卷中的对应题 · 点击直接练</div><div class="exam-list">' + exams + '</div>'
-        : '<p class="no-direct-exam">已录 2021—2023 原卷中未单列本章直接题；它仍是后续章节的概念基础，不能据此认定“不考”。</p>') +
+        : '<p class="no-direct-exam">已录原卷中未单列本章直接题；仍需按本章知识体系掌握，不能据此认定“不考”。</p>') +
       '<p class="audit-note">' + esc(audit.scope || "") + ' 当前有 ' + (audit.withQuiz || 0) + '/' + (audit.nodes || 0) + ' 个知识点带对应小测；不再用无关题凑满 3 题。</p></section>';
   }
 
@@ -1534,7 +1543,7 @@
       '<p class="mh-note">已闯 ' + tot.studied + ' 个知识点 · 三星 ' + tot.three + ' 个 · 共 ' + tot.nodes + ' 个知识点</p>' +
       '<div class="bar"><i style="width:' + pct + '%;background:linear-gradient(90deg,#ff9ec7,#ff4fa3)"></i></div>' +
       '<p class="mh-tip">先看章节逻辑，再点知识点：讲解与配图 → 对应小测 → 得星 → 三星抽卡。</p></div>' +
-      '<div class="logic-bridge"><b>两门课怎样接上？</b><span>高化回答“链怎样合成与控制”；高物回答“这些链结构和运动为什么产生相应性能”。每章地图还列有跨章连接。</span></div>' +
+      '<div class="logic-bridge"><b>课程怎样接上？</b><span>高化回答“链怎样合成与控制”，高物解释“结构为何产生性能”；高数训练连续变化与累积，线代刻画线性结构。每章地图还列有跨章连接。</span></div>' +
       groups + '</div>';
   }
 
@@ -1635,7 +1644,8 @@
         (nd.imgs && nd.imgs.length
           ? '<div class="card lesson"><div class="lesson-lab">教材／课件原图 · ' + nd.imgs.length + ' 张</div>' +
             nd.imgs.map(function (s, k) {
-              return '<figure class="lfig"><img loading="lazy" src="' + esc(s) + '" alt=""><figcaption>图 ' + (k + 1) + ' · 教材或课件截图</figcaption></figure>';
+              var cap = nd.imgCaps && nd.imgCaps[k] ? nd.imgCaps[k] : '教材或课件截图';
+              return '<figure class="lfig"><img loading="lazy" src="' + esc(s) + '" alt="' + esc(cap) + '" data-imgzoom="' + esc(s) + '"><figcaption>图 ' + (k + 1) + ' · ' + esc(cap) + ' · 点图放大</figcaption></figure>';
             }).join("") + '</div>'
           : '<p class="sub" style="margin:8px 2px">本条暂无配图，按上面的文字要点理解即可。</p>') +
         (L.quiz.length ? '<button class="btn primary block lg" data-lstart="1">开始小测 · ' + L.quiz.length + ' 题</button>'
@@ -1669,7 +1679,7 @@
         }).join("") + '</div>';
       } else {
         answerZone = '<button class="btn block sm" data-lshow="1">' + (L.shown ? "收起答案" : "看答案") + '</button>' +
-          (L.shown ? '<div class="answer-reveal"><span class="lab">参考答案</span>' + esc(c.a) + '</div>' +
+          (L.shown ? '<div class="answer-reveal"><span class="lab">' + (c.math ? '考研步骤导读＋原推导' : '参考答案') + '</span>' + esc(c.a) + '</div>' + cardMediaHtml(c, "a") +
             (!L.answered ? '<div class="rate-row" style="margin-top:12px">' +
               '<button class="rate g0" data-lself="0">没想起来</button>' +
               '<button class="rate g2" data-lself="1">想起来了</button></div>' : "") : "");
@@ -1678,9 +1688,9 @@
       return head +
         '<div class="q-card" style="margin:0"><div class="q-tags"><span class="pill">' + TYPE_LABEL[c.type] + '</span>' +
         '<span class="pill">' + (L.i + 1) + ' / ' + L.quiz.length + '</span></div>' +
-        '<div class="q-stem">' + formatStem(c.q) + '</div>' +
+        '<div class="q-stem">' + formatStem(c.q) + '</div>' + cardMediaHtml(c, "q") +
         (c.from ? '<p class="q-src">来源：' + esc(c.from) + '</p>' : '') + answerZone +
-        (c.type === "mcq" && L.answered ? '<div class="feedback ' + (L.ok ? "good" : "bad") + '"><div class="fb-lab">答案与解析</div><div class="fb-body">' + esc(c.a) + '</div></div>' : "") +
+        (c.type === "mcq" && L.answered ? '<div class="feedback ' + (L.ok ? "good" : "bad") + '"><div class="fb-lab">答案与解析</div><div class="fb-body">' + esc(c.a) + '</div></div>' + cardMediaHtml(c, "a") : "") +
         '</div>' +
         padHtml() +
         (L.answered ? '<button class="btn primary block lg" data-lnext="1">下一题</button>' : "") +
@@ -1803,6 +1813,19 @@
   /* ============ 地图 / 闯关事件（全局一次） ============ */
   document.body.addEventListener("click", function (ev) {
     var t;
+    if ((t = ev.target.closest("[data-closezoom]"))) {
+      var oldZoom = document.getElementById("imgZoom");
+      if (oldZoom) oldZoom.remove();
+      document.body.style.overflow = ""; return;
+    }
+    if ((t = ev.target.closest("[data-imgzoom]"))) {
+      var prior = document.getElementById("imgZoom");
+      if (prior) prior.remove();
+      var z = document.createElement("div");
+      z.id = "imgZoom"; z.className = "img-zoom"; z.setAttribute("data-closezoom", "1");
+      z.innerHTML = '<button type="button" aria-label="关闭">×</button><img src="' + esc(t.getAttribute("data-imgzoom")) + '" alt="放大原图">';
+      document.body.appendChild(z); document.body.style.overflow = "hidden"; return;
+    }
     if ((t = ev.target.closest("[data-exam]"))) {
       sfx("tap"); startSession("cards", { ids: [t.getAttribute("data-exam")], title: "本章对应真题" }); return;
     }
